@@ -1,9 +1,6 @@
 # aws_ec2_kubernetes_infra_automation
 To create Kubernetes infrastructure on AWS EC2 instances using Terraform and Ansible
 
-# aws_ec2_kubernetes_infra_automation
-To create Kubernetes infrastructure on AWS EC2 instances using Terraform and Ansible
-
 # Summary:
 This code is developed for creating a production like Kubernetes infrastructure and driven by Terraform variables. 
 If the requirements are in place, it is a two step process to standup k8s environment in AWS. 
