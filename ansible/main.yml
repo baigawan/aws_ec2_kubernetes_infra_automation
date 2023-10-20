@@ -1,0 +1,239 @@
+- name: "Get terraform artifacts"
+  hosts: localhost
+  connection: local
+  vars:
+    wrkr_hostname_prefix: 'ip-'
+    controller_nodes_prefix: 'controller-'
+    init_cluster_str: ""
+    etcd_servers_str: ""
+    wrkrs_names: [] 
+    certs: [ca.pem,ca-key.pem,kubernetes-key.pem,kubernetes.pem,service-account-key.pem,service-account.pem]
+      
+  tasks:
+    - name: Get TF outputs
+      shell: "terraform -chdir=../terraform/ output -json | jq 'with_entries(.value |= .value)'"
+      register: tf_output
+
+    - name: Read output
+      set_fact:
+        tf_output: "{{tf_output.stdout|default('utf8_general_ci')}}"
+
+    - name: Set controllers artifacts
+      set_fact:
+        cntrls_names: "{{ tf_output.cntrls_arts | map(attribute='cntrl_name') | list }}"
+        cntrls_ips: "{{ tf_output.cntrls_arts | map(attribute='private_ip') | list }}"
+        controller_ext_ips: "{{ tf_output.cntrls_arts | map(attribute='external_ip') | list }}"
+
+    - name: Set init cluster controllers string
+      set_fact:
+        init_cluster_str: '{{init_cluster_str + "controller-" + idx|string + "=https://"+item+":2380,"}}'
+        etcd_servers_str: '{{etcd_servers_str + "https://"+item+":2379,"}}'
+      loop: "{{cntrls_ips}}"
+      loop_control:
+        index_var: idx
+
+    - name: Set workers artifacts
+      set_fact:
+        wrkrs_names: "{{ tf_output.wrkrs_arts | map(attribute='wrkr_name') | list }}"
+        worker_ips: "{{ tf_output.wrkrs_arts | map(attribute='private_ip') | list }}"
+        worker_ext_ips: "{{ tf_output.wrkrs_arts | map(attribute='external_ip') | list }}"
+        wrkrs_hostname: "{{ [wrkr_hostname_prefix] | product(tf_output.wrkrs_arts | map(attribute='private_ip')) | map('join') | list | list | replace('.','-')}}"
+        init_cluster_str: ""
+        etcd_servers_str: ""
+        hosts_file: ""
+
+    - name: Create init_cluster_str
+      set_fact:
+        init_cluster_str: "{{ init_cluster_str + cntrls_names[idx|int] + '=https://' + cntrls_ips[idx|int] + ':' + tf_output.cntrlrs_peer_port.cntrlrs_peer_port+','}}"
+      loop: "{{cntrls_ips}}"
+      loop_control:
+        index_var: idx
+
+    - name: Create etcd_servers_str
+      set_fact:
+        etcd_servers_str: "{{ etcd_servers_str + 'https://' + cntrls_ips[idx|int] + ':' + tf_output.etcd_servers_port.etcd_servers_port+','}}"
+      loop: "{{cntrls_ips}}"
+      loop_control:
+        index_var: idx
+
+    - name: Remove extra char
+      set_fact:
+        init_cluster_str: '{{init_cluster_str[:-1]}}'
+        etcd_servers_str: '{{etcd_servers_str[:-1]}}'
+
+    - name: Create host file contents
+      set_fact:
+        hosts_file: "{{ hosts_file + worker_ips[idx|int] + ' ' + wrkrs_hostname[idx|int] + '\n'}}"
+      loop: "{{worker_ips}}"
+      loop_control:
+        index_var: idx
+
+    - name: Create certs
+      shell: "bash scripts/setup_certs.sh"
+      environment:
+        cntrls_names_ar: "{{cntrls_names | join(' ')}}"
+        cntrls_ips: "{{cntrls_ips | join(' ')}}"
+        controller_ext_ips: "{{controller_ext_ips | join(' ')}}"
+        cntrl_ip_str: "{{cntrls_ips | join(',')}}"
+        cntrls_count: "{{cntrls_ips|length}}"
+        wrkrs_names_ar: "{{wrkrs_names | join(' ')}}"
+        worker_ips: "{{worker_ips | join(' ')}}"
+        worker_ext_ips: "{{worker_ext_ips | join(' ')}}"
+        wrkrs_hostname: "{{wrkrs_hostname | join(' ')}}"
+        wrkrs_count: "{{worker_ips|length}}"
+        KUBERNETES_PUBLIC_ADDRESS: "{{tf_output.kbrts_pub_addr.KUBERNETES_PUBLIC_ADDRESS}}"
+        init_cluster_str: "{{init_cluster_str | trim(',') }}"
+        etcd_servers_str: "{{etcd_servers_str | trim(',')}}"
+        api_server_ip: "{{tf_output.api_server_ip.api_server_ip}}"
+
+- name: "------------------------------------Set controllers------------------------------------"
+  hosts: controller_nodes
+  vars:
+    cntrlr_certs: [ca.pem,ca-key.pem,kubernetes-key.pem,kubernetes.pem,service-account-key.pem,service-account.pem]
+    cntrlr_scripts: [cntrlr_startup.sh, rbacs_kubelet.sh]
+  tasks:
+    - name: Distribute controllers certs
+      become: true
+      copy:
+        src: ./certs/{{item}}
+        dest: /home/ubuntu
+      loop: "{{cntrlr_certs}}"
+
+    - name: Copy controllers scripts
+      become: true
+      copy:
+        src: ./scripts/{{item}}
+        dest: /home/ubuntu
+      loop: "{{cntrlr_scripts}}"
+
+    - name: Set k8s pub LB addr
+      set_fact:
+        pub_lb_addr: "{{hostvars['localhost']['tf_output']['kbrts_pub_addr']['KUBERNETES_PUBLIC_ADDRESS']}}"
+
+    - name: Update cntrlr_startup.sh
+      shell: 'sed -i "s/__REPLACE_PUB_ADDR__/{{pub_lb_addr}}/" /home/ubuntu/cntrlr_startup.sh'
+
+- name: "------------------------------------Set workers------------------------------------"
+  hosts: worker_nodes
+  tasks:
+    ## This can be improved by copying only specific hosts files
+    - name: Copy workers key
+      become: true
+      copy:
+        src: ./certs/{{item}}-key.pem
+        dest: /home/ubuntu
+      loop: "{{hostvars['localhost']['wrkrs_names']}}"
+
+    ## This can be improved by copying only specific hosts files
+    - name: Copy workers cert
+      become: true
+      copy:
+        src: ./certs/{{item}}.pem
+        dest: /home/ubuntu
+      loop: "{{hostvars['localhost']['wrkrs_names']}}"
+
+    - name: Copy ca to workers
+      become: true
+      copy:
+        src: ./certs/ca.pem
+        dest: /home/ubuntu
+      loop: "{{hostvars['localhost']['wrkrs_names']}}"
+
+    - name: Copy build script to workers
+      become: true
+      copy:
+        src: ./scripts/setup_workers.sh
+        dest: /home/ubuntu
+
+- name: "------------------------------------Create configs------------------------------------"
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Create configs and bootstrap nodes
+      shell: "bash scripts/setup_configs.sh"
+      environment:
+        cntrls_names_ar: "{{cntrls_names | join(' ')}}"
+        cntrls_ips: "{{cntrls_ips | join(' ')}}"
+        controller_ext_ips: "{{controller_ext_ips | join(' ')}}"
+        cntrl_ip_str: "{{cntrls_ips | join(',')}}"
+        cntrls_count: "{{cntrls_ips|length}}"
+        wrkrs_names_ar: "{{wrkrs_names | join(' ')}}"
+        worker_ips: "{{worker_ips | join(' ')}}"
+        worker_ext_ips: "{{worker_ext_ips | join(' ')}}"
+        wrkrs_hostname: "{{wrkrs_hostname | join(' ')}}"
+        wrkrs_count: "{{worker_ips|length}}"
+        kube_cluster_name: "{{tf_output.kube_cluster_name.kube_cluster_name}}"
+        KUBERNETES_PUBLIC_ADDRESS: "{{tf_output.kbrts_pub_addr.KUBERNETES_PUBLIC_ADDRESS}}"
+        kube_port: "{{tf_output.kube_port.kube_port}}"
+        init_cluster_str: "{{init_cluster_str | trim(',') }}"
+        etcd_servers_str: "{{etcd_servers_str | trim(',')}}"
+
+- name: "------------------------------------Copy Worker configs------------------------------------"
+  hosts: worker_nodes
+  tasks:
+    ## This can be improved by copying only specific hosts files
+    - name: Distribute kube proxy config
+      become: true
+      copy:
+        src: ./configs/kube-proxy.kubeconfig
+        dest: /home/ubuntu
+    ## This can be improved by copying only specific hosts files
+    - name: Copy kube config
+      become: true
+      copy:
+        src: ./configs/{{item}}.kubeconfig
+        dest: /home/ubuntu
+      loop: "{{hostvars['localhost']['wrkrs_names']}}"
+
+- name: "------------------------------------Bootstrap Controllers------------------------------------"
+  hosts: controller_nodes
+  vars:
+    cntrlr_configs: [admin.kubeconfig,kube-controller-manager.kubeconfig,kube-scheduler.kubeconfig]
+  tasks:
+    - name: Distribute controllers certs
+      become: true
+      copy:
+        src: ./configs/{{item}}
+        dest: /home/ubuntu
+      loop: "{{cntrlr_configs}}"
+
+    - name: Distribute encryption-config
+      become: true
+      copy:
+        src: ./encryption/encryption-config.yaml
+        dest: /home/ubuntu
+
+    - name: Build controllers
+      become: true
+      shell: bash /home/ubuntu/cntrlr_startup.sh
+      environment:
+        init_cluster_str: "{{hostvars['localhost']['init_cluster_str']}}"
+        etcd_servers_str: "{{hostvars['localhost']['etcd_servers_str']}}"
+        cntrlrs_peer_port: "{{hostvars['localhost']['tf_output']['cntrlrs_peer_port']['cntrlrs_peer_port']}}"
+        etcd_servers_port: "{{hostvars['localhost']['tf_output']['etcd_servers_port']['etcd_servers_port']}}"
+        cluster_cidr: "{{hostvars['localhost']['tf_output']['cluster_cidr']['cluster_cidr']}}"
+        cluster_ip_range: "{{hostvars['localhost']['tf_output']['cluster_ip_range']['cluster_ip_range']}}"
+        node_port_range: "{{hostvars['localhost']['tf_output']['node_port_range']['node_port_range']}}"
+    
+    - name: Update host file
+      become: true
+      shell: echo "{{hostvars['localhost']['hosts_file']}}" | tee -a /etc/hosts
+
+    - name: Set RBACs
+      become: true
+      shell: bash /home/ubuntu/rbacs_kubelet.sh
+      run_once: true
+      ignore_errors: true
+
+- name: "------------------------------------Bootstrap workers------------------------------------"
+  hosts: worker_nodes
+  tasks:
+    - name: Build workers
+      become: true
+      shell: bash /home/ubuntu/setup_workers.sh
+      environment:
+        cluster_dns: "{{hostvars['localhost']['tf_output']['cluster_dns']['cluster_dns']}}"
+        cluster_cidr: "{{hostvars['localhost']['tf_output']['cluster_cidr']['cluster_cidr']}}"
+
+
+        

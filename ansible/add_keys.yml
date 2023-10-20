@@ -1,0 +1,16 @@
+---
+- name: "Playbook to Add Key to EC2 Instances"
+  hosts: controller_nodes,worker_nodes
+  vars:
+    - status : "present"
+    - key : "~/.ssh/{{ssh_rsa}}.pub"
+
+  tasks:
+  - name: Wait for system to become reachable
+    wait_for_connection:
+      timeout: 300
+  - name: "Copy the authorized key file from"
+    authorized_key:
+      user: "{{ansible_user}}"
+      state: "{{status}}"
+      key: "{{ lookup('file', '{{ key }}')}}"
