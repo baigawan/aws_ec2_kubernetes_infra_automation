@@ -6,7 +6,7 @@ This code is developed for creating a production like Kubernetes infrastructure 
 If the requirements are in place, it is a two step process to standup k8s environment in AWS. 
 Terraform not only builds the resources for K8s but also sets up newly created hosts for Ansible to build them so user doesn't have to worry about maintaining Ansible variables.
 
-It was a motovation for creating my personal test environment to build and destroy without worrying about maintaining long bash scripts.
+It was a motivation for creating my personal test environment to build and destroy without worrying about maintaining long bash scripts.
 Configurations were followed from https://medium.com/geekculture/building-a-kubernetes-cluster-on-aws-from-scratch-7e1e8b0342c4
 
 # Requirements:
