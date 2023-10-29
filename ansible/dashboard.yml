@@ -1,0 +1,112 @@
+- name: "Configure k8s user and dashboard"
+  hosts: localhost
+  connection: local
+        
+  tasks:
+    - name: Set vars
+      set_fact:
+        KUBERNETES_PUBLIC_ADDRESS: "{{tf_output.kbrts_pub_addr.KUBERNETES_PUBLIC_ADDRESS}}"
+        KUBERNETES_CLUSTER_NAME: "{{tf_output.kube_cluster_name.kube_cluster_name}}"
+
+    - name: Config kube cluster for remote access
+      shell: '(kubectl config set-cluster {{KUBERNETES_CLUSTER_NAME}}
+            --certificate-authority=certs/ca.pem
+            --embed-certs=true
+            --server=https://"{{KUBERNETES_PUBLIC_ADDRESS}}":443)'
+
+    - name: Config kube cluster credentials
+      shell: '(kubectl config set-credentials admin
+            --client-certificate=certs/admin.pem
+            --client-key=certs/admin-key.pem)'
+
+    - name: Set context
+      shell: kubectl config set-context {{KUBERNETES_CLUSTER_NAME}} --cluster={{KUBERNETES_CLUSTER_NAME}} --user=admin
+
+    - name: Use context
+      shell: kubectl config use-context {{KUBERNETES_CLUSTER_NAME}}
+
+    - name: Create dashboard namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: kubernetes-dashboard
+    - name: Create kube admin SA
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: admin-user
+            namespace: kubernetes-dashboard
+
+    - name: Create kube admin SA
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: admin-user
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: cluster-admin
+          subjects:
+          - kind: ServiceAccount
+            name: admin-user
+            namespace: kubernetes-dashboard
+
+    - name: Add kubernetes-dashboard helm repo
+      kubernetes.core.helm_repository:
+        name: stable
+        repo_url: "https://kubernetes.github.io/dashboard/"
+
+    - name: Deploy kubernetes-dashboard
+      kubernetes.core.helm:
+        name: kubernetes-dashboard
+        chart_ref: kubernetes-dashboard/kubernetes-dashboard
+        release_namespace: kubernetes-dashboard
+        create_namespace: true
+
+    - name: Get admin token
+      kubernetes.core.k8s_info:
+        kind: Secret
+        namespace: kubernetes-dashboard
+      register: secrets
+
+    - name: Set admin token
+      set_fact:
+        admin_token: "{{ item.data.token}}"
+      when: "'admin-user-token' in item.metadata.name"
+      loop: "{{ secrets.resources }}"
+      no_log: True
+
+    - name: Get kubernetes-dashboard pod name
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: kubernetes-dashboard
+        label_selectors:
+          - app.kubernetes.io/component = kubernetes-dashboard
+          - app.kubernetes.io/instance = kubernetes-dashboard
+      register: pod_list
+
+    - name: Set pod name for dashbnoard
+      set_fact:
+        dash_pod_name: "{{pod_list.resources.0.metadata.name}}"
+
+    - name: Wait for services
+      ansible.builtin.wait_for:
+        timeout: 30
+      
+    - name: Start Kuberenetes dashboard
+      shell: "(kubectl -n kubernetes-dashboard port-forward {{dash_pod_name}} 8443:8443 >/dev/null 2>&1 &)"
+      register: dashboard_arts
+
+    - name: Dashboard info to login
+      debug:
+        msg: "Dashboard URL: https://127.0.0.1:8443, Token: {{admin_token|b64decode}}"
+

@@ -45,3 +45,11 @@ output "cluster_ip_range" {
 output "node_port_range" {
   value = {"node_port_range":var.node_port_range}
 }
+
+output "cntrls_prefix" {
+  value = {"cntrls_prefix":var.cntrls_prefix}
+}
+
+output "wrkrs_prefix" {
+  value = {"wrkrs_prefix":var.wrkrs_prefix}
+}
