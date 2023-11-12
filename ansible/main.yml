@@ -13,7 +13,7 @@
 - import_playbook: build_nodes.yml
   tags:
     - build_nodes
-- import_playbook: dashboard.yml
+- import_playbook: config-utils.yml
 
 
 

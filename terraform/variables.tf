@@ -49,6 +49,10 @@ variable "dep_region" {
     type = string
 }
 
+variable "zone" {
+    type = string
+}
+
 variable "controllers_vm_count" {
   type = number
 }

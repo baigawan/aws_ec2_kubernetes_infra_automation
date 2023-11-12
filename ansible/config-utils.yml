@@ -1,7 +1,8 @@
 - name: "Configure k8s user and dashboard"
   hosts: localhost
   connection: local
-        
+  environment:
+    CLUSTER_DNS: "{{hostvars['localhost']['tf_output']['cluster_dns']['cluster_dns']}}"
   tasks:
     - name: Set vars
       set_fact:
@@ -25,6 +26,9 @@
     - name: Use context
       shell: kubectl config use-context {{KUBERNETES_CLUSTER_NAME}}
 
+    - name: Create Kube Core DNS
+      shell: envsubst < coredns/deploy-coredns.yml | kubectl apply -f -
+        
     - name: Create dashboard namespace
       kubernetes.core.k8s:
         state: present

@@ -8,8 +8,6 @@ eval "controller_ext_ips=(${controller_ext_ips})"
 eval "kube_port=(${kube_port})"
 eval "kube_cluster_name=(${kube_cluster_name})"
 
-echo "kube_cluster_name=(${kube_cluster_name})"
-
 
 #Create k8s configs
 rm -rf configs/
@@ -17,7 +15,7 @@ mkdir configs
 cd configs
 
 for instance in ${wrkrs_names[@]}; do
-  kubectl config set-cluster kubernetes-from-scratch \
+  kubectl config set-cluster ${kube_cluster_name} \
     --certificate-authority=../certs/ca.pem \
     --embed-certs=true \
     --server=https://${KUBERNETES_PUBLIC_ADDRESS}:443 \
@@ -28,14 +26,14 @@ kubectl config set-credentials system:node:${instance} \
     --embed-certs=true \
     --kubeconfig=${instance}.kubeconfig
 kubectl config set-context default \
-    --cluster=kubernetes-from-scratch \
+    --cluster=${kube_cluster_name} \
     --user=system:node:${instance} \
     --kubeconfig=${instance}.kubeconfig
 kubectl config use-context default --kubeconfig=${instance}.kubeconfig
 done
 
 
-kubectl config set-cluster kubernetes-from-scratch \
+kubectl config set-cluster ${kube_cluster_name} \
   --certificate-authority=../certs/ca.pem \
   --embed-certs=true \
   --server=https://${KUBERNETES_PUBLIC_ADDRESS}:443 \
@@ -46,13 +44,13 @@ kubectl config set-credentials system:kube-proxy \
   --embed-certs=true \
   --kubeconfig=kube-proxy.kubeconfig
 kubectl config set-context default \
-  --cluster=kubernetes-from-scratch \
+  --cluster=${kube_cluster_name} \
   --user=system:kube-proxy \
   --kubeconfig=kube-proxy.kubeconfig
 kubectl config use-context default --kubeconfig=kube-proxy.kubeconfig
 
 
-kubectl config set-cluster kubernetes-from-scratch \
+kubectl config set-cluster ${kube_cluster_name} \
   --certificate-authority=../certs/ca.pem \
   --embed-certs=true \
   --server=https://127.0.0.1:${kube_port} \
@@ -63,14 +61,14 @@ kubectl config set-credentials system:kube-controller-manager \
   --embed-certs=true \
   --kubeconfig=kube-controller-manager.kubeconfig
 kubectl config set-context default \
-  --cluster=kubernetes-from-scratch \
+  --cluster=${kube_cluster_name} \
   --user=system:kube-controller-manager \
   --kubeconfig=kube-controller-manager.kubeconfig
 kubectl config use-context default --kubeconfig=kube-controller-manager.kubeconfig
 
 
 
-kubectl config set-cluster kubernetes-from-scratch \
+kubectl config set-cluster ${kube_cluster_name} \
   --certificate-authority=../certs/ca.pem \
   --embed-certs=true \
   --server=https://127.0.0.1:${kube_port} \
@@ -81,12 +79,12 @@ kubectl config set-credentials system:kube-scheduler \
   --embed-certs=true \
   --kubeconfig=kube-scheduler.kubeconfig
 kubectl config set-context default \
-  --cluster=kubernetes-from-scratch \
+  --cluster=${kube_cluster_name} \
   --user=system:kube-scheduler \
   --kubeconfig=kube-scheduler.kubeconfig
 kubectl config use-context default --kubeconfig=kube-scheduler.kubeconfig
 
-kubectl config set-cluster kubernetes-from-scratch \
+kubectl config set-cluster ${kube_cluster_name} \
   --certificate-authority=../certs/ca.pem \
   --embed-certs=true \
   --server=https://127.0.0.1:${kube_port} \
@@ -97,7 +95,7 @@ kubectl config set-credentials admin \
   --embed-certs=true \
   --kubeconfig=admin.kubeconfig
 kubectl config set-context default \
-  --cluster=kubernetes-from-scratch \
+  --cluster=${kube_cluster_name} \
   --user=admin \
   --kubeconfig=admin.kubeconfig
 kubectl config use-context default --kubeconfig=admin.kubeconfig

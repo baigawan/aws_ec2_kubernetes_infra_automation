@@ -12,8 +12,9 @@ rsa_key_name = "MY_AWS_KEY"
 boot_disk_size = 60
 
 dep_region = "us-west-2"
+zone = "us-west-2a"
 
-controllers_vm_count = 2
+controllers_vm_count = 3
 workers_vm_count = 3
 security_group_name = "sm-dev-sg"
 default_tags = {
