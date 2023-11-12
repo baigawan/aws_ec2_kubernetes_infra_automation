@@ -10,6 +10,7 @@ resource "aws_vpc" "sm-kubernetes-proj" {
 resource "aws_subnet" "kubernetes-pvt" {
   vpc_id     = aws_vpc.sm-kubernetes-proj.id
   cidr_block = var.subnet_cidr_block
+  availability_zone = var.zone
 
   tags = {
     Name = "kubernetes-pvt"
@@ -117,4 +118,13 @@ resource "aws_lb_listener" "sm-lb-lstn" {
   }
 
   depends_on = [ aws_instance.k8-dev-wrks ]
+}
+
+resource "aws_route" "wrkrs-route" {
+  count = var.workers_vm_count
+  route_table_id            = aws_route_table.sm-k8s-rt.id
+  destination_cidr_block    = var.pod_cidr_blocks[count.index]
+  instance_id = aws_instance.k8-dev-wrks[count.index].id
+
+  depends_on = [ aws_lb_listener.sm-lb-lstn]
 }

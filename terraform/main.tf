@@ -2,6 +2,7 @@ resource "aws_instance" "k8-dev" {
   count         = var.controllers_vm_count
   ami           =  var.ami_name
   instance_type = var.instance_type
+  availability_zone = var.zone
 
   user_data = "name=${var.cntrls_prefix}-${count.index}"
   private_ip = var.cntrls_private_ip[count.index]
@@ -28,6 +29,7 @@ resource "aws_instance" "k8-dev-wrks" {
   count         = var.workers_vm_count
   ami           = var.ami_name
   instance_type = var.instance_type
+  availability_zone = var.zone
 
   user_data = "name=${var.wrkrs_prefix}-${count.index}|pod-cidr=${var.pod_cidr_blocks[count.index]}"
   private_ip = var.wrkrs_private_ip[count.index]
