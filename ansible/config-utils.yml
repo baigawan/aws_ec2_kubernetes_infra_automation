@@ -9,6 +9,15 @@
         KUBERNETES_PUBLIC_ADDRESS: "{{tf_output.kbrts_pub_addr.KUBERNETES_PUBLIC_ADDRESS}}"
         KUBERNETES_CLUSTER_NAME: "{{tf_output.kube_cluster_name.kube_cluster_name}}"
 
+    - name: Unset existing cluster
+      shell: 'kubectl config unset clusters.{{KUBERNETES_CLUSTER_NAME}}'
+
+    - name: Unset existing context
+      shell: 'kubectl config unset contexts.{{KUBERNETES_CLUSTER_NAME}}'
+
+    - name: Unset existing admin user
+      shell: kubectl config unset users.admin
+
     - name: Config kube cluster for remote access
       shell: '(kubectl config set-cluster {{KUBERNETES_CLUSTER_NAME}}
             --certificate-authority=certs/ca.pem

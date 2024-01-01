@@ -38,6 +38,3 @@ subjects:
     kind: User
     name: kubernetes
 EOF
-
-
-### curl --cacert certs/ca.pem https://${KUBERNETES_PUBLIC_ADDRESS}/version
