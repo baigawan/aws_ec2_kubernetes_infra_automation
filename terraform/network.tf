@@ -126,5 +126,5 @@ resource "aws_route" "wrkrs-route" {
   destination_cidr_block    = var.pod_cidr_blocks[count.index]
   instance_id = aws_instance.k8-dev-wrks[count.index].id
 
-  depends_on = [ aws_lb_listener.sm-lb-lstn]
+  depends_on = [ aws_lb_listener.sm-lb-lstn, null_resource.install_pub_key_wrkrs ]
 }
